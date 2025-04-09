@@ -1,0 +1,10 @@
+▶️ Run Tests
+Install pytest (if not already):
+
+pip install pytest
+
+🧪 Run Full Test Suite:
+
+pytest tests/
+
+

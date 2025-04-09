@@ -1,0 +1,6 @@
+
+
+python visualize_depth.py \\
+    --data_path ./your_dataset \\
+    --checkpoint checkpoints/depth_model_epoch20.pth \\
+    --num_samples 5

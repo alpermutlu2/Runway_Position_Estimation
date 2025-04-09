@@ -1,0 +1,2 @@
+train-depth --data_path ./kitti --epochs 20
+visualize-depth --data_path ./kitti --checkpoint checkpoints/model.pth

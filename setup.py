@@ -1,2 +1,28 @@
-from setuptools import setup
-setup(name='runway_estimator', version='1.0', packages=['depth', 'fusion', 'tracking'])
+
+from setuptools import setup, find_packages
+
+setup(
+    name='aysezeynepahmet',
+    version='0.1.0',
+    description='Probabilistic Monocular Depth Estimation with SAM-based Masking',
+    author='Your Name',
+    author_email='your.email@example.com',
+    packages=find_packages(),
+    install_requires=[
+        'torch>=1.10',
+        'torchvision',
+        'opencv-python',
+        'numpy'
+    ],
+    include_package_data=True,
+    entry_points={
+        'console_scripts': [
+            'train-depth=aysezeynepahmet.train_cli:main',
+            'visualize-depth=aysezeynepahmet.visualize_depth:main'
+        ],
+    },
+    classifiers=[
+        'Programming Language :: Python :: 3',
+        'Operating System :: OS Independent',
+    ],
+)
