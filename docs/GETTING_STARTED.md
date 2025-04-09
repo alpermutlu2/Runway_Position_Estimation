@@ -3,7 +3,7 @@
 ## Installation
 1. Clone the repo:
    ```bash
-   git clone https://github.com/alpermutlu2/aysezeynepahmet.git
+   git clone https://github.com/alpermutlu2/Runway_Position_Estimation.git
 
    pip install -r requirements.txt
 

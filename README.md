@@ -1,4 +1,4 @@
-# aysezeynepahmet
+# Runway_Position_Estimation
 
 Monocular depth estimation and visual localization system featuring semantic segmentation, uncertainty modeling, and evaluation on standard benchmarks. Designed with modularity in mind to enable experimentation, fusion, and deployment in real-time or academic settings.
 
@@ -22,7 +22,7 @@ This project implements a monocular depth estimation and scale recovery framewor
 ## 📁 Project Structure
 
 ```bash
-aysezeynepahmet/
+Runway_Position_Estimation/
 ├── core/              # Backbone logic, registration, utilities
 ├── data/              # Dataset loaders, augmentations
 ├── depth/             # Depth estimation architectures
@@ -58,8 +58,9 @@ aysezeynepahmet/
 
 1. **Clone the repository**:
 ```bash
-git clone https://github.com/alpermutlu2/aysezeynepahmet.git
-cd aysezeynepahmet
+git clone https://github.com/alpermutlu2/Runway_Position_Estimation.git
+cd Runway_Position_Estimation
+pip install -r requirements.txt
 ```
 
 2. **Create and activate a virtual environment** *(optional but recommended)*:

@@ -2,7 +2,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='aysezeynepahmet',
+    name='Runway_Position_Estimation',
     version='0.1.0',
     description='Probabilistic Monocular Depth Estimation with SAM-based Masking',
     author='Your Name',
@@ -17,8 +17,8 @@ setup(
     include_package_data=True,
     entry_points={
         'console_scripts': [
-            'train-depth=aysezeynepahmet.train_cli:main',
-            'visualize-depth=aysezeynepahmet.visualize_depth:main'
+            'train-depth=Runway_Position_Estimation.train_cli:main',
+            'visualize-depth=Runway_Position_Estimation.visualize_depth:main'
         ],
     },
     classifiers=[
