@@ -1,149 +1,244 @@
-# Runway Position Estimator 🚁🛬
 
-**Hybrid Visual Localization System** using MiDaS + M4Depth + RAFT + Panoptic Segmentation + LightGlue + ORB-SLAM3.
+# Runway Position Estimation
 
-> Designed for accurate pose estimation on low-feature environments like runways.
+This is an enhanced version of the original monocular visual localization repository with full integration of modular components.
 
----
+## ✅ Features
 
-## 📦 Features
+- Temporal filtering (EMA)
+- Confidence-based depth fusion
+- Flow-depth inconsistency masking
+- Bundle adjustment
+- Evaluation toolkit (ATE, RPE)
+- KITTI trajectory export
+- Streamlit GUI
+- Modular model handling via ModelWrapper
 
-✅ Modular visual pipeline (depth, flow, segmentation, pose)  
-✅ Scale estimation using pitch + camera height + semantic mask  
-✅ LightGlue + SuperPoint matcher  
-✅ Confidence-weighted depth fusion (MiDaS, M4Depth, RAFT)  
-✅ Pose refinement via PnP (optional)  
-✅ Dynamic object rejection using flow-depth inconsistency  
-✅ Per-frame metrics logging + Streamlit GUI  
-✅ Batch KITTI sequence benchmarking  
+## 🗂 Folder Structure
 
----
+- `core/` — core algorithms (inference, BA)
+- `utils/` — helper modules (filtering, masking, fusion)
+- `models/` — wrappers for external models like M4Depth, CoDEPS
+- `evaluation/` — trajectory evaluation scripts
+- `export/` — exporters for formats like KITTI
+- `visualization/` — GUI tools
+- `scripts/` — runnable scripts
+- `data/` — expected input data folders
 
-## 📁 Project Structure
-```
-runway_position_estimator/
-├── depth/                  # Depth estimation modules
-│   ├── midas_inference.py
-│   ├── m4depth_inference.py
-│   └── raft_flow.py
-├── fusion/                # Depth fusion, motion filters
-│   ├── scale_recovery.py
-│   ├── flow_depth_consistency.py
-│   └── depth_fusion.py
-├── tracking/              # Pose tracking and smoothing
-│   ├── pose_fusion_manager.py
-│   ├── pose_filter.py
-│   └── essential_pose_estimator.py
-├── segmentation/          # Semantic segmentation
-│   └── panoptic_inference.py
-├── frontends/
-│   ├── lightglue/         # LightGlue matcher
-│   └── orb_slam3/         # ORB-SLAM3 log parser
-├── utils/
-│   ├── trajectory_logger.py
-│   └── pose_evaluator.py
-├── scripts/
-│   ├── integration_runner.py
-│   ├── evaluate_trajectory.py
-│   ├── gui_dashboard.py
-│   └── run_all_kitti.py
-├── models/                # Pretrained models
-├── data/                  # KITTI sequences and GT
-├── outputs/               # Logs, results, visualizations
-├── main.py                # CLI entry point
-└── requirements.txt
-```
-
----
-
-## 🚀 Installation
+## 🚀 Running
 
 ```bash
-# Create virtual environment
-python -m venv runway-env
-source runway-env/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Download model weights
-# MiDaS, M4Depth, RAFT, Detectron2
-# Place them in the /models/ folder
+python main.py
 ```
 
----
+## 🧪 Testing
 
-## 🔧 Usage
-
-### ➤ Full Pipeline (per sequence)
 ```bash
-python main.py --mode run
+python scripts/test_pipeline.py
 ```
 
-### ➤ Evaluate vs Ground Truth
+## 📦 Configuration
+
+See `main.py` for editable config options.
+
+MIT License
+
+
+## 🧪 Data Preparation
+
+This repository supports structured training/validation/testing datasets:
+
+```
+data/
+├── images/
+│   ├── train/
+│   ├── val/
+│   └── test/
+├── depth_gt/
+│   ├── train/
+│   ├── val/
+│   └── test/
+└── poses_gt/
+    ├── train/
+    ├── val/
+    └── test/
+```
+
+Each sample includes:
+- `images/*.npy` : RGB input
+- `depth_gt/*.npy` : Ground-truth depth maps
+- `poses_gt/*.txt` : 3x4 pose matrices
+
+### 🔀 Dataset Split Script
+
+To automatically split your training set:
+
 ```bash
-python main.py --mode evaluate --gt data/poses/00.txt
+python scripts/split_dataset.py
 ```
 
-### ➤ Visual Dashboard
+This will shuffle and copy files into `train`, `val`, and `test` folders based on the default split ratio (70/15/15).
+
+
+## 🧭 Visual SLAM Modules
+
+This project includes foundational components for Visual SLAM integration:
+
+```
+slam/
+├── keyframe_manager.py        # Decides when to add new keyframes
+├── pose_graph.py              # Manages a graph of poses and edges
+├── local_bundle_adjustment.py # Performs local graph refinement
+└── slam_runner.py             # End-to-end SLAM pipeline using keyframes
+```
+
+### 🔁 Running SLAM Module
+
+To test SLAM pipeline with dummy pose data:
+
 ```bash
-streamlit run scripts/gui_dashboard.py
+python slam/slam_runner.py
 ```
 
-### ➤ Batch Benchmark on KITTI
+### 📌 Key Concepts
+
+- **Keyframe Selection**: Selects poses based on movement threshold.
+- **Pose Graph**: Stores relative transformations between poses.
+- **Bundle Adjustment**: Placeholder for local optimization over pose graph.
+
+In future versions, global loop closure and real-time tracking can be added.
+
+
+## 🔁 Updated Pipeline Configuration
+
+`main.py` now supports modular integration through the following config flags:
+
+| Config Key               | Description                                                  |
+|--------------------------|--------------------------------------------------------------|
+| `use_dataset`            | Load data from `.npy` and `.txt` files under `data/`         |
+| `run_slam`               | Run the Visual SLAM module using output poses                |
+| `enable_gui`             | Enable Streamlit GUI                                         |
+| `enable_temporal_filter`| Apply EMA smoothing to pose and depth                        |
+| `enable_confidence_fusion`| Fuse multiple depth maps with confidence weights           |
+| `use_bundle_adjustment` | Refine pose via landmark reprojection                        |
+| `enable_flow_depth_mask`| Mask dynamic regions using depth/flow consistency            |
+
+---
+
+## 🧭 Visual SLAM Integration
+
+After running `main.py` with `run_slam=True`, the following occurs:
+- Keyframe selection based on pose displacement
+- Pose graph construction using relative transforms
+- Optional local bundle adjustment for keyframe refinement
+
+> ✅ Upcoming improvements: pose graph optimization with external solver
+
+---
+
+## 🌍 Optional Point Cloud Integration (Future)
+
+This system can optionally be extended to produce:
+- Depth-based 3D point clouds per frame
+- Global point cloud fusion using SLAM poses
+- Export to `.ply` or `.pcd` formats
+
+---
+
+## 🧪 Model Training/Fine-Tuning (Planned)
+
+To allow fine-tuning with your own data:
+- Extend the `models/` wrapper to include training logic
+- Create `train.py` for supervised or self-supervised training
+- Enable augmentation and checkpoint saving
+
+Example starter training configs will be added in future iterations.
+
+
+---
+
+## 🔁 SLAM Optimization Integration
+
+The pose graph optimization routine is now embedded in `slam/pose_graph.py`:
+- Adds mock optimization (random perturbation for demo)
+- Future integration with Ceres/g2o possible
+- Triggered automatically when `run_slam=True`
+
+---
+
+## 🌍 Point Cloud Export (Optional)
+
+You can generate `.ply` point cloud files per-frame using:
+
+```python
+'export_pointcloud': True
+```
+
+This uses `utils/pointcloud_export.py` and saves files to:
+
+```
+export/cloud_000.ply
+export/cloud_001.ply
+...
+```
+
+---
+
+## 🧪 Training & Fine-Tuning Pipeline
+
+Train a simple depth prediction model using `.npy` input with:
+
 ```bash
-python scripts/run_all_kitti.py
+python train.py
+```
+
+Requirements:
+- Images in `data/images/train/*.npy` (shape: HxWx3, dtype uint8 or float32)
+- Depths in `data/depth_gt/train/*.npy` (shape: HxW, dtype float32)
+
+Trains a small convolutional model using L1 loss, saves to:
+
+```
+checkpoints/depth_model.pth
 ```
 
 ---
 
-## 📈 Evaluation Metrics
+## 🧠 Overall Integrated Pipeline
 
-- **ATE**: Absolute Trajectory Error
-- **Scale Drift**: Relative motion deviation
-- **Rotation Error**: Angular drift per frame
-- **Flow Magnitude**: RAFT stability estimate
-- **Num Matches**: SuperPoint + LightGlue match count
+All modules are now interconnected via `main.py`, which supports:
 
-All logged to `outputs/logs/run_metrics.csv` and plotted in GUI.
+| Module                    | Config Key             | Notes                          |
+|---------------------------|------------------------|---------------------------------|
+| Inference from models     | `models`               | M4Depth, CoDEPS wrappers       |
+| Dataset input             | `use_dataset`          | From `.npy`/`.txt` under `data/`|
+| Flow-depth masking        | `enable_flow_depth_mask`| Optional, dynamic rejection    |
+| Temporal smoothing        | `enable_temporal_filter`| Uses EMA                       |
+| Confidence fusion         | `enable_confidence_fusion`| Fuse multiple depths         |
+| Bundle adjustment         | `use_bundle_adjustment`| Refines pose from observations |
+| SLAM tracking             | `run_slam`             | Adds pose graph + keyframes    |
+| Pose graph optimization   | Auto in SLAM           | Basic graph optimization       |
+| Point cloud export        | `export_pointcloud`    | One file per frame             |
+| GUI visualization         | `enable_gui`           | Streamlit interface            |
+
+
 
 ---
 
-## 📊 Benchmark Reports
+## 🖼 Advanced Streamlit GUI Features
 
-Auto-generated by `run_all_kitti.py`, stored in:
+Launch the dashboard using:
+
+```bash
+streamlit run main.py
 ```
-outputs/logs/batch/
-├── run_metrics_00.csv
-├── run_metrics_01.csv
-├── ...
-```
 
-Plots and `trajectory_cmp_*.png` help you visually assess trajectory fidelity.
+Features:
+- 🔘 Frame slider for previewing any frame
+- 🎞 Simulated live playback via checkbox
+- 🌄 Depth map visualized with colorbar
+- 🧭 2D trajectory plot with pose highlights
+- 📊 Evaluation metrics shown per run
+- 💬 Live log panel shows recent frame views
 
----
-
-## 💡 Notes
-- All intermediate steps are saved for debug and visualization
-- Easy to extend for training, ICP refinement, or lightweight SLAM
-- Modular design supports component benchmarking, ablation testing
-
----
-
-## 👩‍💻 Credits
-Built and engineered with ❤️ by [You] and ChatGPT. Powered by open-source models and frameworks including:
-- MiDaS (Intel)
-- M4Depth (ETH Zurich)
-- RAFT (Princeton)
-- LightGlue (Magicleap)
-- ORB-SLAM3 (UC3M)
-- Detectron2 (Meta AI)
-
----
-
-## 📬 License
-MIT (or your license of choice)
-
----
-
-Ready for takeoff ✈️
+> Optionally extend to Open3D 3D viewer in future versions
