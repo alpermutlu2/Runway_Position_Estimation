@@ -1,8 +1,6 @@
-# 🛬  Runway Position Estimation System
+# 🛬 Runway_Position_Estimation
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/)
-[![OpenCV Version](https://img.shields.io/badge/opencv-4.5%2B-orange)](https://opencv.org/)
+A real-time hybrid visual localization pipeline for runway-relative pose estimation using monocular video.
 
 ---
 
@@ -22,26 +20,9 @@
 
 ---
 
-## Installation
+## 🚀 Quick Start
 
-### Prerequisites
-- Python 3.7+
-- OpenCV 4.5+
-- NumPy
-- Matplotlib (for visualization)
-
-### Quick Install
-```bash
-pip install -r requirements.txt
-
-git clone https://github.com/alpermutlu2/Runway_Position_Estimation.git
-cd Runway_Position_Estimation
-pip install -e .
-```
-
-
-### 🚀 Quick Start
-
+### 🔧 1. Setup (Local)
 
 ```bash
 git clone https://github.com/alpermutlu2/Runway_Position_Estimation.git
@@ -49,49 +30,6 @@ cd Runway_Position_Estimation
 bash setup.sh
 ```
 
----
-
-#### Usage Examples
-```markdown
-## Usage
-
-### Basic Command Line
-```bash
-python runway_estimator.py --input path/to/image.jpg --output results/
-
-from runway_estimator import RunwayEstimator
-
-estimator = RunwayEstimator(
-    camera_params="config/calibration.json",
-    edge_thresholds=(50, 150)
-)
-result = estimator.process_image("input.jpg")
-```
-
----
-
-#### Configuration Template
-Make `config/calibration.json`:
-```json
-{
-    "camera_matrix": [[fx, 0, cx], [0, fy, cy], [0, 0, 1]],
-    "dist_coeffs": [k1, k2, p1, p2, k3],
-    "runway_width_meters": 45.0
-}
-```
----
-
-## Methodology
-
-### Processing Pipeline
-1. **Preprocessing**
-   - Adaptive histogram equalization
-   - Noise reduction (bilateral filtering)
-   
-2. **Feature Detection**
-   - Canny edge detection
-   - Probabilistic Hough lines
-   
 ---
 
 ### 🧪 2. Run on a Video

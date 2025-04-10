@@ -1,106 +1,200 @@
+# main.py — Full Real-time & Batch Visual Localization Pipeline
 
+import argparse
 import os
-import torch
 import numpy as np
-from core.inference import run_inference_pipeline
-from core.bundle_adjustment import run_bundle_adjustment
-from utils.temporal_filter import TemporalFilter
-from utils.confidence_fusion import fuse_depth_maps_with_confidence
-from utils.flow_depth_mask import compute_flow_depth_mask
-from evaluation.metrics import evaluate_trajectory
-from export.kitti_exporter import export_trajectory_kitti_format
-from visualization.viewer import launch_streamlit_gui
-from slam.slam_runner import run_slam
+import cv2
+import torch
+
+from tracking.hybrid_tracker import HybridTracker
+from depth.depth_fusion_module import DepthFusionModule
+from filtering.pose_filter import PoseFilter
+from evaluation.evaluator import Evaluator
+from evaluation.kitti_logger import KITTILogger
+from evaluation.kitti_metrics import load_kitti_poses, compute_ATE
+from data.image_sequence_loader import ImageSequenceLoader
+from utils.video_io import VideoStreamer
+from optimization.keyframe_logger import KeyframeLogger
+from optimization.relocalization_detector import RelocalizationDetector
+from optimization.pose_graph_optimizer import PoseGraphOptimizer
+from scripts.check_weights import check_weights
+from inference.segmentation import RunwaySegmenter
+from inference.preprocess import apply_clahe
+from utils.profiler import Timer
+from inference.line_detection import detect_runway_lines_ransac
+from utils.visualization import overlay_trajectory, draw_frame_info
 
 
-def load_data_from_npy(image_path, depth_path, pose_path):
-    image = np.load(image_path)
-    depth = np.load(depth_path)
-    pose = np.loadtxt(pose_path)
-    return image, depth, pose
+def estimate_yaw_from_lines(left_line, right_line, K):
+    if left_line is None or right_line is None:
+        return None
+    m1, b1 = left_line
+    m2, b2 = right_line
+    if abs(m1 - m2) < 1e-3:
+        return None
+    x_v = (b2 - b1) / (m1 - m2)
+    y_v = m1 * x_v + b1
+    vp_homog = np.array([x_v, y_v, 1.0])
+    v_cam = np.linalg.inv(K).dot(vp_homog)
+    yaw = np.arctan2(v_cam[0], v_cam[2])
+    return np.degrees(yaw)
 
 
-def main(config):
-    # Load data and run model inference
-    if config.get('use_dataset', False):
-        image_path = os.path.join(config['input_path'], 'images/train/img_000.npy')
-        depth_path = os.path.join(config['input_path'], 'depth_gt/train/depth_000.npy')
-        pose_path = os.path.join(config['input_path'], 'poses_gt/train/pose_000.txt')
-        image, depth, pose = load_data_from_npy(image_path, depth_path, pose_path)
-        outputs = {
-            'depth_sources': [depth],
-            'confidence_maps': [np.ones_like(depth)],
-            'depth': depth,
-            'pose': [pose] * 10,
-            'flow': [np.random.rand(*depth.shape, 2)] * 9,
-            'landmarks': [np.random.rand(3) for _ in range(10)],
-            'observations': {(i, i): np.array([32, 32]) for i in range(10)}
-        }
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--tracker', type=str, default='hybrid')
+    parser.add_argument('--image_dir', type=str, default='')
+    parser.add_argument('--video', type=str, default='')
+    parser.add_argument('--gt_path', type=str, default='')
+    parser.add_argument('--enable_loop_closure', action='store_true')
+    parser.add_argument('--skip_weight_check', action='store_true')
+    parser.add_argument('--visualize', action='store_true')
+    parser.add_argument('--save', action='store_true')
+    parser.add_argument('--realtime', action='store_true')
+    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    if not args.skip_weight_check:
+        if not check_weights():
+            print("❌ Weight check failed. Exiting.")
+            return
+
+    config = {'orbslam3_min_quality': 0.3}
+    tracker = HybridTracker(config)
+    depth_module = DepthFusionModule(config)
+    pose_filter = PoseFilter(alpha=0.8)
+    evaluator = Evaluator()
+    logger = KITTILogger()
+    keyframe_log = KeyframeLogger()
+    loop_detector = RelocalizationDetector()
+    graph_optimizer = PoseGraphOptimizer()
+    segmenter = RunwaySegmenter(device=args.device)
+
+    timer = Timer()
+    est_poses = []
+    loop_closed = False
+
+    if args.video:
+        loader = VideoStreamer(args.video)
+        use_video = True
+    elif args.image_dir and os.path.exists(args.image_dir):
+        loader = ImageSequenceLoader(args.image_dir)
+        use_video = False
     else:
-        outputs = run_inference_pipeline(config['input_path'], config['models'])
+        print("⚠️ No input provided. Using simulated dummy frames.")
+        loader = None
+        use_video = False
 
-    # Apply flow-depth inconsistency mask
-    if config.get('enable_flow_depth_mask', False):
-        masked_depths = []
-        for i in range(len(outputs['depth']) - 1):
-            mask = compute_flow_depth_mask(
-                outputs['flow'][i], outputs['depth'][i], outputs['depth'][i + 1]
-            )
-            masked_depth = outputs['depth'][i] * mask
-            masked_depths.append(masked_depth)
-        outputs['depth'] = masked_depths
-
-    # Apply temporal filtering
-    if config.get('enable_temporal_filter', False):
-        tf = TemporalFilter(method='ema', alpha=config.get('filter_alpha', 0.9))
-        outputs['depth'] = tf.apply(outputs['depth'])
-        outputs['pose'] = tf.apply(outputs['pose'])
-
-    # Confidence-weighted fusion of depth sources
-    if config.get('enable_confidence_fusion', False):
-        outputs['depth'] = fuse_depth_maps_with_confidence(
-            outputs['depth_sources'], outputs['confidence_maps']
+    if args.save and loader:
+        output_path = 'output.avi'
+        out_writer = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*'XVID'),
+            loader.fps() if use_video else 30,
+            loader.resolution() if use_video else (640, 480)
         )
+    else:
+        out_writer = None
 
-    # Optional Bundle Adjustment
-    if config.get('use_bundle_adjustment', False):
-        outputs['pose'] = run_bundle_adjustment(
-            outputs['pose'], outputs['landmarks'], outputs['observations']
-        )
+    for frame_id in range(10 if loader is None else len(loader)):
+        if loader:
+            image, timestamp = loader.get_next()
+            if image is None:
+                break
+        else:
+            image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+            timestamp = frame_id / 30.0
 
-    # Evaluate using ATE and RPE
-    results = evaluate_trajectory(outputs['pose'], config['ground_truth'])
-    print("Evaluation Results:", results)
+        timer.start("CLAHE")
+        image = apply_clahe(image)
+        timer.stop("CLAHE")
 
-    # Export pose trajectory
-    export_trajectory_kitti_format(outputs['pose'], config['export_path'])
+        timer.start("Segmentation")
+        mask = segmenter.predict(image)
+        timer.stop("Segmentation")
 
-    # Optional Streamlit GUI
-    if config.get('enable_gui', False):
-        launch_streamlit_gui(outputs)
+        runway_ratio = np.sum(mask > 0) / (mask.shape[0] * mask.shape[1])
+        if runway_ratio < 0.01:
+            print(f"[Frame {frame_id}] Rejected: no visible runway.")
+            continue
 
-    if config.get('run_slam', False):
+        timer.start("RANSAC Lines")
+        left_line, right_line, edge_viz = detect_runway_lines_ransac(image, mask)
+        timer.stop("RANSAC Lines")
 
-    if config.get('export_pointcloud', False):
-        from utils.pointcloud_export import export_pointcloud
-        for i, depth in enumerate(outputs['depth']):
-            export_pointcloud(depth, outputs['pose'][i], save_path=f"export/cloud_{i:03d}.ply")
-        run_slam(outputs['pose'])
+        K = np.array([[600, 0, image.shape[1] / 2], [0, 600, image.shape[0] / 2], [0, 0, 1]])
+        yaw = estimate_yaw_from_lines(left_line, right_line, K)
+        if yaw is not None:
+            print(f"[Frame {frame_id}] Estimated Heading Yaw: {yaw:.2f}°")
+
+        timer.start("Tracking")
+        pose, keypoints, is_keyframe = tracker.track(image, timestamp)
+        timer.stop("Tracking")
+
+        timer.start("Depth Fusion")
+        depth_map, position_3d = depth_module.fuse(image, keypoints, pose)
+        timer.stop("Depth Fusion")
+
+        timer.start("Filtering")
+        filtered_pos = pose_filter.filter(position_3d)
+        timer.stop("Filtering")
+
+        evaluator.log(frame_id, pose, filtered_pos)
+        logger.log(pose)
+        est_poses.append(pose)
+
+        if is_keyframe:
+            keyframe_log.log(frame_id, pose)
+            if args.enable_loop_closure:
+                loop = loop_detector.check_loop(pose, keyframe_log.get_recent(10))
+                if loop and not loop_closed:
+                    print(f"[Loop Closure Detected] at frame {frame_id}")
+                    optimized = graph_optimizer.optimize(keyframe_log.get_all_poses())
+                    est_poses = optimized
+                    loop_closed = True
+
+        if args.visualize or args.realtime:
+            debug_frame = image.copy()
+            h = debug_frame.shape[0]
+
+            def draw_line(line, color):
+                if line is not None:
+                    slope, intercept = line
+                    x1 = int((h - intercept) / slope)
+                    x2 = int((0 - intercept) / slope)
+                    cv2.line(debug_frame, (x1, h), (x2, 0), color, 2)
+
+            draw_line(left_line, (0, 255, 0))
+            draw_line(right_line, (0, 0, 255))
+            overlay_trajectory(debug_frame, [p[:3, 3] for p in est_poses])
+            draw_frame_info(debug_frame, frame_id, args.device)
+            cv2.imshow("Runway Localization", debug_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        if args.save and out_writer:
+            out_writer.write(debug_frame)
+
+        print(f"[Frame {frame_id}] Filtered Position: {filtered_pos}, Keyframe: {is_keyframe}")
+
+    tracker.shutdown()
+    timer.report()
+    evaluator.summarize()
+    logger.save()
+
+    if args.gt_path and os.path.exists(args.gt_path):
+        gt_poses = load_kitti_poses(args.gt_path)
+        ate = compute_ATE(gt_poses, est_poses)
+        print(f"ATE against GT: {ate:.4f} meters")
+
+    if out_writer:
+        out_writer.release()
+    cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
-    config = {
-        'input_path': 'data',
-        'models': ['M4Depth', 'CoDEPS'],
-        'ground_truth': 'data/groundtruth_01.txt',
-        'enable_flow_depth_mask': True,
-        'enable_temporal_filter': True,
-        'filter_alpha': 0.9,
-        'enable_confidence_fusion': True,
-        'use_bundle_adjustment': True,
-        'enable_gui': False,
-        'use_dataset': True,
-        'run_slam': True,
-        'export_path': 'export/kitti/sequence_01/'
-    }
-    main(config)
+    main()

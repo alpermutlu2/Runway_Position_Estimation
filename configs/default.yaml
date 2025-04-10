@@ -1,0 +1,7 @@
+
+tracker: hybrid
+depth_model: DPT_Large
+orbslam3_min_quality: 0.3
+pose_filter_alpha: 0.8
+sequence_fps: 30
+image_resize: [640, 480]

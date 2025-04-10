@@ -1,10 +1,22 @@
+# Core
 numpy
 opencv-python
-matplotlib
 torch
-torchvision
 tqdm
-scikit-learn
-open3d
-networkx
-streamlit
+
+# Visualization
+matplotlib
+
+# Optional for ORB-SLAM3 integration
+pyyaml
+
+# Models (MiDaS, RAFT, LightGlue, etc.)
+einops
+kornia
+scikit-image
+requests
+timm
+gdown
+
+# Optional for segmentation and model download
+segment-anything @ git+https://github.com/facebookresearch/segment-anything.git
